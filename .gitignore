@@ -1,0 +1,65 @@
+# Unwanted sub-folders
+*/
+!sgb/
+
+# Project temp files
+sgb/sgb_msu1.bin
+
+# ROM files
+*.gb
+*.gbc
+*.sfc
+
+# Emulator generated files
+*.bp
+*.bs
+*.bst
+*.bsz
+*.cht
+*.sav
+*.srm
+*.sym
+*-trace.log
+*-usage.bin
+
+# Patch files
+*.ips
+*.bps
+
+# MSU-1 related files
+*.pcm
+*.msu
+*.msu1
+
+# Audio files
+*.aac
+*.flac
+*.m4a
+*.mp3
+*.ogg
+
+# Backup files
+*.bak
+
+# Archive files
+*.7z
+*.bzip2
+*.gz
+*.tar
+*.zip
+
+# Windows executables
+*.bat
+*.exe
+
+# VS Code project files
+.vscode/
+*.code-workspace
+
+# Image Files
+*.bmp
+*.jpg
+*.png
+
+# Misc
+*.txt
