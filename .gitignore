@@ -2,6 +2,9 @@
 */
 !sgb/
 
+# Project temp files
+sgb/sgb_msu1.bin
+
 # ROM files
 *.gb
 *.gbc
@@ -15,6 +18,7 @@
 *.cht
 *.sav
 *.srm
+*.sym
 *-trace.log
 *-usage.bin
 
@@ -44,9 +48,18 @@
 *.tar
 *.zip
 
-# Executable binaries
+# Windows executables
+*.bat
 *.exe
 
 # VS Code project files
 .vscode/
 *.code-workspace
+
+# Image Files
+*.bmp
+*.jpg
+*.png
+
+# Misc
+*.txt

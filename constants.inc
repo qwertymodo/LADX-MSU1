@@ -9,9 +9,13 @@ variable REVISION = 0
 
 constant wEntitiesStatusTable = $C280
 constant wSGBCommandBuffer = $C370
+constant wCreditsSubscene = $D00E
+constant wRequestedSFX = $D360
+constant wActiveSFX = $D361
 constant wOverworldRoomStatus = $D800
 constant wShieldLevel = $DB44
 constant wSwordLevel = $DB4E
+constant wIsMarinFollowingLink = $DB73
 constant wCurrentBank = $DBAF
 constant wFarcallParams = $DE01
 constant wRequestedMusicTrack = $D368
@@ -73,8 +77,10 @@ inline OFFSET(name, addr) {
 OFFSET(Hook_CheckNewGameSong,       $008151)
 OFFSET(FreeSpace_Bank02,            $00BD00)
 OFFSET(FlyingBookEntity,            $058C92)
+OFFSET(FreeSpace_Bank17,            $05FFBB)
 OFFSET(Hook_JumpToPlaySong,         $06C032)
 OFFSET(SFXPanFix_Bank1B,            $06C2D5)
+OFFSET(SFXCancel_Bank1B,            $06CE57)
 OFFSET(FreeSpace_Bank1B,            $06CF00)
 OFFSET(SFXPanFix_Bank1E,            $078359)
 OFFSET(ClearCurrentTrack,           $07FB66)
@@ -84,9 +90,12 @@ OFFSET(Hook_Fade_Increment,         $07FFBA)
 OFFSET(FreeSpace_Bank1F,            $07FFEE)
 OFFSET(MadBatterEntityHandlerPtr,   $08025E)
 OFFSET(ColorDungeonPuzzle,          $0809A1)
-OFFSET(Hook_SGBTransfer,            $0F2B0C)
-OFFSET(WaitForBCFrames,             $0F2B92)
+OFFSET(Hook_SGBTransfer,            $0F2A7C)
+OFFSET(Hook_MSUInit,                $0F2B27)
 OFFSET(SendUploadCommand,           $0F2B51)
+OFFSET(WaitFor60ms,                 $0F2B86)
+OFFSET(WaitForBCFrames,             $0F2B92)
+OFFSET(SendVRAMData,                $0F2BA3)
 OFFSET(FreeSpace_Bank3C,            $0F2C00)
 OFFSET(MSU1TrackCommandTable,       $0F3F00)
 
@@ -96,13 +105,16 @@ print "ROM Region: JP\n"
         // Rev 0 unique offsets
         OFFSET(Farcall,                     $000BD7)
         OFFSET(CheckEntityCountdownTimer,   $000C05)
+        OFFSET(CopyData,                    $002919)
         OFFSET(IncrementEntityState,        $003B17)
         OFFSET(DebugSaveData,               $004671)
         OFFSET(InitDebugSave,               $0046CD)
         OFFSET(Hook_CheckFilenames,         $004AE3)
-        OFFSET(MadBatterEntityHandler,      $060EDD)
         OFFSET(Hook_SetVolume_Half,         $0056DB)
         OFFSET(Hook_SetVolume_Full,         $0058BA)
+        OFFSET(CommitSaveData,              $005E35)
+        OFFSET(Hook_TheEndSave,             $05CBDD)
+        OFFSET(MadBatterEntityHandler,      $060EDD)
         OFFSET(Hook_LilDevil_Start,         $060F41)
         OFFSET(Hook_LilDevil_Stop,          $06107D)
         OFFSET(WalrusTrack,                 $0615CB)
@@ -113,10 +125,12 @@ print "ROM Region: JP\n"
         // Rev 1+2 common offets
         OFFSET(Farcall,                     $000BD3)
         OFFSET(CheckEntityCountdownTimer,   $000C01)
+        OFFSET(CopyData,                    $002910)
         OFFSET(IncrementEntityState,        $003B0E)
         OFFSET(DebugSaveData,               $004674)
         OFFSET(InitDebugSave,               $0046D0)
         OFFSET(Hook_CheckFilenames,         $004AE6)
+        OFFSET(Hook_TheEndSave,             $05CBD8)
         OFFSET(MadBatterEntityHandler,      $060EE1)
         OFFSET(Hook_LilDevil_Start,         $060F45)
         OFFSET(Hook_LilDevil_Stop,          $061061)
@@ -128,11 +142,13 @@ print "ROM Region: JP\n"
             // Rev 1 unique offsets
             OFFSET(Hook_SetVolume_Half,         $0056DE)
             OFFSET(Hook_SetVolume_Full,         $0058A8)
+            OFFSET(CommitSaveData,              $005E34)
 
         } else if REVISION == 2 {
             // Rev 2 unique offsets
             OFFSET(Hook_SetVolume_Half,         $005702)
             OFFSET(Hook_SetVolume_Full,         $0058CC)
+            OFFSET(CommitSaveData,              $005E5B)
         }
     }
    
@@ -142,12 +158,15 @@ print "ROM Region: US\n"
         // Rev 0 unique offsets
         OFFSET(Farcall,                     $000BD7)
         OFFSET(CheckEntityCountdownTimer,   $000C05)
+        OFFSET(CopyData,                    $002914)
         OFFSET(IncrementEntityState,        $003B12)
         OFFSET(DebugSaveData,               $004667)
         OFFSET(InitDebugSave,               $0046C3)
         OFFSET(Hook_CheckFilenames,         $004AD0)
         OFFSET(Hook_SetVolume_Half,         $00568C)
         OFFSET(Hook_SetVolume_Full,         $00586B)
+        OFFSET(CommitSaveData,              $005DE6)
+        OFFSET(Hook_TheEndSave,             $05CBDD)
         OFFSET(MadBatterEntityHandler,      $060EDD)
         OFFSET(Hook_LilDevil_Start,         $060F41)
         OFFSET(Hook_LilDevil_Stop,          $06107D)
@@ -159,10 +178,12 @@ print "ROM Region: US\n"
         // Rev 1+2 common offets
         OFFSET(Farcall,                     $000BD3)
         OFFSET(CheckEntityCountdownTimer,   $000C01)
+        OFFSET(CopyData,                    $00290B)
         OFFSET(IncrementEntityState,        $003B09)
         OFFSET(DebugSaveData,               $00466A)
         OFFSET(InitDebugSave,               $0046C6)
         OFFSET(Hook_CheckFilenames,         $004AD3)
+        OFFSET(Hook_TheEndSave,             $05CBD8)
         OFFSET(MadBatterEntityHandler,      $060EE1)
         OFFSET(Hook_LilDevil_Start,         $060F45)
         OFFSET(Hook_LilDevil_Stop,          $061081)
@@ -174,11 +195,13 @@ print "ROM Region: US\n"
             // Rev 1 unique offsets
             OFFSET(Hook_SetVolume_Half,         $00568F)
             OFFSET(Hook_SetVolume_Full,         $00586E)
+            OFFSET(CommitSaveData,              $005DFA)
 
         } else if REVISION == 2 {
             // Rev 2 unique offsets
             OFFSET(Hook_SetVolume_Half,         $0056B3)
             OFFSET(Hook_SetVolume_Full,         $005892)
+            OFFSET(CommitSaveData,              $005E21)
         } else {
             error "Invalid ROM revision"
         }
@@ -189,10 +212,12 @@ print "ROM Region: FR\n"
     // Common offsets for all revs
     OFFSET(Farcall,                     $000BC7)
     OFFSET(CheckEntityCountdownTimer,   $000BF5)
+    OFFSET(CopyData,                    $0028F7)
     OFFSET(IncrementEntityState,        $003B0D)
     OFFSET(DebugSaveData,               $004667)
     OFFSET(InitDebugSave,               $0046C3)
     OFFSET(Hook_CheckFilenames,         $004AD4)
+    OFFSET(Hook_TheEndSave,             $05CC27)
     OFFSET(MadBatterEntityHandler,      $060EE1)
     OFFSET(Hook_LilDevil_Start,         $060F45)
     OFFSET(Hook_LilDevil_Stop,          $061081)
@@ -202,13 +227,15 @@ print "ROM Region: FR\n"
 
     if REVISION == 0 {
         // Rev 0 unique offsets
-        OFFSET(Hook_SetVolume_Half,         $00568B)
+        OFFSET(Hook_SetVolume_Half,         $0052A6)
         OFFSET(Hook_SetVolume_Full,         $00586A)
+        OFFSET(CommitSaveData,              $005DF6)
 
     } else if REVISION == 1 {
         // Rev 1 unique offsets
         OFFSET(Hook_SetVolume_Half,         $0056AF)
         OFFSET(Hook_SetVolume_Full,         $00588E)
+        OFFSET(CommitSaveData,              $005E1D)
 
     } else {
         error "Invalid ROM revision"
@@ -219,10 +246,12 @@ print "ROM Region: DE\n"
     // Common offsets for all revs
     OFFSET(Farcall,                     $000BC7)
     OFFSET(CheckEntityCountdownTimer,   $000BF5)
+    OFFSET(CopyData,                    $0028FA)
     OFFSET(IncrementEntityState,        $003B10)
     OFFSET(DebugSaveData,               $00465B)
     OFFSET(InitDebugSave,               $0046B7)
     OFFSET(Hook_CheckFilenames,         $004A9A)
+    OFFSET(Hook_TheEndSave,             $05CBF4)
     OFFSET(MadBatterEntityHandler,      $060EE1)
     OFFSET(Hook_LilDevil_Start,         $060F45)
     OFFSET(Hook_LilDevil_Stop,          $061081)
@@ -234,11 +263,13 @@ print "ROM Region: DE\n"
         // Rev 0 unique offsets
         OFFSET(Hook_SetVolume_Half,         $0056E8)
         OFFSET(Hook_SetVolume_Full,         $0058C7)
+        OFFSET(CommitSaveData,              $005E53)
 
     } else if REVISION == 1 {
         // Rev 1 unique offsets
         OFFSET(Hook_SetVolume_Half,         $00570C)
         OFFSET(Hook_SetVolume_Full,         $0058EB)
+        OFFSET(CommitSaveData,              $005E7A)
 
     } else {
         error "Invalid ROM revision"

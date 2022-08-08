@@ -22,7 +22,7 @@ macro FARCALL_NOSAVE(variable TargetBank, variable Target, variable ReturnBank) 
     ld      hl,wFarcallParams
     ld      a,TargetBank
     ld      (hl+),a
-    ld      a,Target>>8
+    ld      a,((Target>>8)&$3F)+$40
     ld      (hl+),a
     ld      a,Target
     ld      (hl+),a
@@ -40,5 +40,19 @@ macro FARCALL(variable TargetBank, variable Target, variable ReturnBank) {
     pop     hl
     pop     de
     pop     bc
+    pop     af
+}
+
+macro FARCALL_NESTED(variable TargetBank, variable Target, variable ReturnBank) {
+    push af
+    ld      a,(wCurrentBank)
+    push af
+    ld      a,TargetBank
+    ld      (wCurrentBank),a
+    ld      a,(wFarcallParams+3)
+    FARCALL(TargetBank, Target, ReturnBank)
+    ld      (wFarcallParams+3),a
+    pop     af
+    ld      (wCurrentBank),a
     pop     af
 }
