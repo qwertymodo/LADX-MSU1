@@ -130,15 +130,6 @@ if {defined USE_EXPANDED_BORDER} {
     SEND_UPLOAD_COMMAND(CmdUploadExpandedBorder+$A0)
     WAIT_FOR_N_FRAMES($06)
 
-if {defined USE_CUSTOM_SGB_CODE} {
-    ld      hl,UserCommandPayload
--;  call    SendUploadCommand
-        WAIT_FOR_N_FRAMES($06)
-        ld      a,(hl)
-        and     a
-        jr      nz,-
-}
-
     // Upload the first part of the expanded frame tiles data
     ld      hl,SGBFrameTiles2
     ld      de,CmdVRAMTransferTilesExpLo
@@ -164,6 +155,16 @@ if {defined USE_CUSTOM_SGB_CODE} {
     ld      hl,SGBFrameTiles1
     ld      de,CmdVRAMTransferTilesHi
     call    SendVRAMData
+
+    // Upload custom user code while the screen is off
+if {defined USE_CUSTOM_SGB_CODE} {
+    ld      hl,UserCommandPayload
+-;  call    SendUploadCommand
+        WAIT_FOR_N_FRAMES($06)
+        ld      a,(hl)
+        and     a
+        jr      nz,-
+}
 
     // Upload frame tilemap and palettes
     ld      hl,SGBFrameMetadata

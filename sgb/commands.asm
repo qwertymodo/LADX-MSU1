@@ -59,16 +59,29 @@ macro PAL12() {
     SYS_CMD(CMD_CODE.PAL12, 1)
 }
 
+macro SOUND() {
+    SYS_CMD(CMD_CODE.SOUND, 1)
+}
+
 macro BGR555(rgb888) {
-    define r = ({rgb888} >> 16) & $FF
-    define g = ({rgb888} >> 8) & $FF
-    define b = {rgb888} & $FF
 
-    evaluate r = {r} + (({r} & $04) << 1)
-    evaluate g = {g} + (({g} & $04) << 1)
-    evaluate b = {b} + (({b} & $04) << 1)
+    inline COL8TO5(color) {
+        variable result = ({color} >> 3) & $1F
+        if result < $1F {
+            result = result + (({color} >> 2) & $01)
+        }
+    }
 
-    dw ({b} << 7) | ({g} << 2) | ({r} >> 3)
+    COL8TO5({rgb888} >> 16)
+    evaluate r = result
+    COL8TO5({rgb888} >> 8)
+    evaluate g = result
+    COL8TO5({rgb888})
+    evaluate b = result
+
+    //print "RGB: {rgb888} R: {r} G: {g} B: {b} \n"
+
+    dw ({b} << 10) | ({g} << 5) | {r}
 }
 
 macro DATA_SND(addr, bank, len) {
@@ -224,7 +237,7 @@ DATA_SND_CODE_START()
     lda $4210
     lda.b #$31; sta $4200       // Disable NMI
     lda.b #$80
-    
+
     DATA_SND($1816, $00, $0B)
     sta $2100; sta $2115
     lda.b #$01
@@ -234,7 +247,7 @@ DATA_SND_CODE_START()
     rep #$20
         lda.w #$B50B; sta $00BB // Reset default NMI vector
         lda.w #$1000
-        
+
     DATA_SND($182C, $00, $0B)
         sta $4365               // Transfer size
         lda.w #$0000
@@ -266,7 +279,7 @@ DATA_SND_CODE_START()
     trb $0212
     lda.b #$18; sta $4361
     lda.b #$40
-    
+
     fill $01,$00
     DATA_SND($185F, $00, $0B)
     sta $420B

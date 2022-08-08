@@ -1,5 +1,7 @@
 architecture wdc65816
 
+define ENABLE_MSU_FALLBACK = 1
+
 if !{defined BASEADDRESS} {
     define BASEADDRESS = $1800
 }
@@ -40,47 +42,46 @@ constant FLAG_AUTO_RESUME = $04
 
 origin 0
 base {BASEADDRESS}
-MSUIdle:            // $1800
+IdleFlag:       // $1800
 db $01
 
-MSUTrackNumber:     // $1801
+TrackNumber:    // $1801
 db $00
 
-MSUCommand:         // $1802
+Command:        // $1802
 db $00
 
-MSUSetSettings:     // $1803
+SetSettings:    // $1803
 db $00
 
-MSUClearSettings:   // $1804
+ClearSettings:  // $1804
 db $00
 
-MSUTargetVolume:    // $1805
+TargetVolume:   // $1805
 db $00
 
-MSUCurrentVolume:   // $1806
+CurrentVolume:  // $1806
 db $00
 
-MSUFadeRate:        // $1807
+FadeRate:       // $1807
 db $10
 
-MSUSettings:        // $1808
+Settings:       // $1808
 db FLAG_AUTO_RESUME
 
-MSUCurrentTrack:    // $1809
+CurrentTrack:   // $1809
 db $00
 
-MSUPreviousTrack:   // $180A
+PreviousTrack:  // $180A
 db $00
 
 origin $000E
-MSUHandlerPointer:  //$180E
+HandlerPointer: //$180E
 dw MSU1ActiveHandler.done
 
 // Must be in bank $00!
 origin $0010
 function MSU1NMISetup {
-    php
     rep #$10; sep #$20
         ldx.w REG_MSU_ID_0; cpx.w #$2D53; bne done
         ldx.w REG_MSU_ID_2; cpx.w #$534D; bne done
@@ -93,23 +94,40 @@ function MSU1NMISetup {
         stx.w REG_MSU_VOLUME
 
         ldx.w #MSU1IdleHandler; stx.b NMI_VECTOR
-        lda $4210
-        lda.b #$B1; sta $4200;
+        lda.b #$DC; sta $0810  // jmp [$00BB]
+        ldx.w #$00BB; stx $0811
+
+        //lda.b #$20; sta $4207
+        //lda.b #$DE; sta $4209
 
 done:
-    plp
+    sep #$30
     cli
     rts
 }
 
+function MSU1NOPHandler {
+define x = 20
+while {x} > 0 {
+    //nop
+    evaluate x = {x} - 1
+}
+    //sep #$20
+    //    pha
+    //        lda.w $4212; and.b #$80; beq +
+    //        pla; rti// plp; rtl
+    //    +; lda.w $4210
+    //    pla
+    //rti
+}
+
 function MSU1IdleHandler {
-    php
     sep #$20
         pha
-        lda.w $4210
-        lda.l {BASEADDRESS}; beq notIdle
-    pla; plp
-    rti
+        //lda.w $4210
+        lda.l IdleFlag; beq notIdle
+    pla
+    sep #$30; jmp $0820
 
 notIdle:
         phb; phd
@@ -118,57 +136,103 @@ notIdle:
             ldx.w #{BASEADDRESS}; phx; pld
             lda.b #$00; pha; plb
 
-        +;  lda.b MSUTrackNumber; beq ++
-                lda.b MSUClearSettings; ora.b MSUSetSettings; beq +
+        +;  lda.b TrackNumber; beq ++
+                lda.b ClearSettings; ora.b SetSettings; beq +
                     // Set settings change handler
                     ldx.w #MSU1ChangeSettings
                     bra activate
                 // Set track load handler
             +;  ldx.w #MSU1TrackPreload
                 bra activate
-        +;  lda.b MSUCommand; beq +
+        +;  lda.b Command; beq +
                 // Set command handler
                 ldx.w #MSU1Command
                 bra activate
-        +;  lda.b MSUCurrentVolume; cmp.b MSUTargetVolume; beq +
+        +;  lda.b CurrentVolume; cmp.b TargetVolume; beq +
                 // Set fade handler
                 ldx.w #MSU1Fade
                 bra activate
-        +;  lda.b MSUSettings; bit.b #FLAG_AUTO_RESUME; beq idle
-            lda.w REG_MSU_STATUS; and.b #$30; cmp.b #$10; bne idle
-                ldx.w #MSU1PlaybackMonitor
-                bra activate
+            // Check if we need to monitor the current track
+        +;  lda.w REG_MSU_STATUS; bit #$20; bne idle
+            lda.b Settings; bit.b #FLAG_NO_INTERRUPT; beq +
+                lda.b ClearSettings; bit.b #FLAG_NO_INTERRUPT; beq monitor
+                lda.b Settings
+        +;  bit.b #FLAG_AUTO_RESUME; beq idle
+            lda.b PreviousTrack; beq idle
+
+monitor:
+        ldx.w #MSU1PlaybackMonitor; stx.w NMI_VECTOR
+        bra done
 idle:   
-        inc MSUIdle;
+        inc IdleFlag;
         bra done
 activate:
-        stx.b MSUHandlerPointer
+        stx.b HandlerPointer
         ldx.w #MSU1ActiveHandler; stx.w NMI_VECTOR
 done:
-        plx; pld; plb; pla; plp;
-        rti
+        plx; pld; plb; pla
+        sep #$30; jmp $0820
 }
 
 function MSU1ActiveHandler {
-    php
     sep #$20; rep #$10
-    phb; phd; pha; phx;
-        lda.w $4210
+    pha; phb; phd; phx;
+        //lda.w $4210
         ldx.w #{BASEADDRESS}; phx; pld
         lda.b #$00; pha; plb
-        jmp (MSUHandlerPointer)
+        jmp (HandlerPointer)
 updateHandler:
-    stx.b MSUHandlerPointer
+    stx.b HandlerPointer
 done:
-    plx; pla; pld; plb; plp;
-    rti
+    bra MSU1IdleHandler.done
+}
+
+function MSU1PlaybackMonitor {
+    sep #$20
+        pha; phb
+        //lda.w $4210
+        lda.b #$00; pha; plb
+        lda.w REG_MSU_STATUS; bit.b #$10; beq notPlaying
+        lda.w TrackNumber; ora.w Command; beq wait
+
+    // Only set the LSB of the pointer, must be in the same
+    // $0100 block as MSU1IdleHandler
+    if (MSU1PlaybackMonitor & $FF00) != (MSU1IdleHandler & $FF00) {
+        error "MSU1PlaybackMonitor must be in the same $0100 block as MSU1IdleHandler"
+    }
+    lda.b #MSU1IdleHandler; sta.w NMI_VECTOR
+wait:
+    plb; pla
+    sep #$30; jmp $0820
+
+notPlaying:
+        phd
+        rep #$10
+            phx
+            ldx.w #{BASEADDRESS}; phx; pld
+
+            lda.b Settings; bit.b #FLAG_AUTO_RESUME; beq idle
+
+            lda.b PreviousTrack; beq idle
+            sta.b TrackNumber; stz.b PreviousTrack
+
+            lda.b #$03; sta.b Command
+            stz.b CurrentVolume
+            ldx.w #MSU1TrackPreload; bra MSU1IdleHandler.activate
+
+idle:
+        inc IdleFlag
+        ldx.w #MSU1IdleHandler; stx.w NMI_VECTOR
+
+done:
+        bra MSU1IdleHandler.done
 }
 
 // Apply new settings and return
 function MSU1ChangeSettings {
-    lda.b MSUClearSettings; eor.b #$FF; and.b MSUSettings;
-    ora.b MSUSetSettings; sta.b MSUSettings
-    stz.b MSUSetSettings; stz.b MSUClearSettings
+    lda.b ClearSettings; eor.b #$FF; and.b Settings;
+    ora.b SetSettings; sta.b Settings
+    stz.b SetSettings; stz.b ClearSettings
     ldx.w #MSU1TrackPreload
     jmp MSU1ActiveHandler.updateHandler
 }
@@ -177,19 +241,19 @@ function MSU1TrackPreload {
     // Check if we're currently playing
     lda.w REG_MSU_STATUS; bit.b #$10; beq +
     // Check if we're loading a new track or restarting the same one
-    lda.b MSUTrackNumber; cmp.b MSUCurrentTrack; bne +
+    lda.b TrackNumber; cmp.b CurrentTrack; bne +
         // Check if reloading the same track is currently allowed
-        lda.b MSUSettings; bit.b #FLAG_ALLOW_RESTART; bne ++
-            stz.b MSUTrackNumber; stz.b MSUCommand
+        lda.b Settings; bit.b #FLAG_ALLOW_RESTART; bne ++
+            stz.b TrackNumber; stz.b Command
             ldx.w #MSU1IdleHandler; stx.w NMI_VECTOR
             jmp MSU1ActiveHandler.done
-+;  lda.b MSUSettings
++;  lda.b Settings
 +;  bit.b #FLAG_NO_INTERRUPT; beq +
         // No interrupt, check if current track is done playing
         lda.w REG_MSU_STATUS; and.b #$30; cmp.b #$10; beq done
-+;  lda.b MSUCommand; bit.b #$04; beq +
++;  lda.b Command; bit.b #$04; beq +
     lda.w REG_MSU_STATUS; bit.b #$20; beq +
-        lda.b MSUCurrentTrack; sta.b MSUPreviousTrack
+        lda.b CurrentTrack; sta.b PreviousTrack
 +;  ldx.w #MSU1StopPlayback
     jmp MSU1ActiveHandler.updateHandler
 
@@ -203,8 +267,8 @@ function MSU1StopPlayback {
     // Stop current track (with resume flag, if requested, and if currently looping)
     lda.w REG_MSU_STATUS; bit #$10; beq +
         //stz.w REG_MSU_CONTROL
-        lsr; lsr; lsr; and.b #$04; and.b MSUCommand//; beq +
-        //lda.b MSUCommand; and.b #$04//; beq +
+        lsr; lsr; lsr; and.b #$04; and.b Command//; beq +
+        //lda.b Command; and.b #$04//; beq +
             sta.w REG_MSU_CONTROL
 +;  
     ldx.w #MSU1TrackLoad
@@ -219,10 +283,10 @@ function MSU1TrackLoad {
     bit #$10; bne done
 
     // Load new track
-    lda.b MSUTrackNumber
+    lda.b TrackNumber
     sta.w REG_MSU_TRACK_LO; stz.w REG_MSU_TRACK_HI
-    sta.b MSUCurrentTrack; stz.b MSUTrackNumber
-    lda.b MSUCommand; and.b #$03; sta.b MSUCommand
+    sta.b CurrentTrack; stz.b TrackNumber
+    lda.b Command; and.b #$03; sta.b Command
 
     ldx.w #MSU1CheckLoadedTrack
     jmp MSU1ActiveHandler.updateHandler
@@ -241,9 +305,21 @@ function MSU1CheckLoadedTrack {
     
     // If we try and load a new track while this one
     // is still loading switch to the new one instead
-    lda.b MSUTrackNumber; beq +
+    lda.b TrackNumber; beq +
         ldx.w #MSU1IdleHandler; stx.w NMI_VECTOR
         bra done
+
+if {defined ENABLE_MSU_FALLBACK} {
+    // Check if the track is missing
++;  lda.w REG_MSU_STATUS; bit.b #$08; beq +
+        // If the track is missing, attempt to load fallback
+        sep #$10
+            lda.b CurrentTrack; tax
+            lda.w MSUFallbackTable,x; sta.b TrackNumber
+        rep #$10
+        ldx.w #MSU1IdleHandler; stx.w NMI_VECTOR
+        bra done
+}
 
 +;  ldx.w #MSU1Command
     jmp MSU1ActiveHandler.updateHandler
@@ -253,59 +329,52 @@ done:
 }
 
 function MSU1Command {
-    lda.b MSUCommand
-    and.b #$07; sta.w REG_MSU_CONTROL
-    stz.b MSUCommand
-    lda.b MSUCurrentVolume; sta.w REG_MSU_VOLUME
+    lda.b CurrentVolume; sta.w REG_MSU_VOLUME
     //lda.b #$FF; sta.w REG_MSU_VOLUME
+    lda.b Command
+    and.b #$07; sta.w REG_MSU_CONTROL
+    stz.b Command
     ldx.w #MSU1IdleHandler; stx.w NMI_VECTOR
     jmp MSU1ActiveHandler.done
 }
 
 function MSU1Fade {
-    lda.b MSUTrackNumber; ora.b MSUCommand; beq +
-        lda.b MSUSettings; bit.b FLAG_NO_INTERRUPT; beq idle
+    lda.b TrackNumber; ora.b Command; beq +
+        lda.b Settings; bit.b FLAG_NO_INTERRUPT; beq idle
 
-+;  lda.b MSUCurrentVolume; cmp.b MSUTargetVolume; beq endFade; bcc increment
++;  lda.b CurrentVolume; cmp.b TargetVolume; beq endFade; bcc increment
 
         // Decrement and check for overflow
-        sbc.b MSUFadeRate; bcc endFade
+        sbc.b FadeRate; bcc endFade
         // Check for non-overflow fade past target
-        cmp.b MSUTargetVolume; bcs done; bra endFade
+        cmp.b TargetVolume; bcs done; bra endFade
 
 increment:  // Increment and check for overflow
-        adc.b MSUFadeRate; bcs endFade
+        adc.b FadeRate; bcs endFade
         // Check for non-overflow fade past target
-        cmp.b MSUTargetVolume; bcc done
+        cmp.b TargetVolume; bcc done
 
 endFade:
-    lda.b MSUTargetVolume; sta.b MSUCurrentVolume; sta.w REG_MSU_VOLUME
+    lda.b TargetVolume; sta.b CurrentVolume; sta.w REG_MSU_VOLUME
 
 idle:
     ldx.w #MSU1IdleHandler; stx.w NMI_VECTOR
     jmp MSU1ActiveHandler.done
 
 done:
-    sta.b MSUCurrentVolume; sta.w REG_MSU_VOLUME
+    sta.b CurrentVolume; sta.w REG_MSU_VOLUME
     jmp MSU1ActiveHandler.done
 }
 
-function MSU1PlaybackMonitor {
-    lda.w REG_MSU_STATUS; bit #$20; bne idle; bit.b #$10; beq +
-        lda.b MSUSettings; bit.b #FLAG_NO_INTERRUPT; beq +
-        lda.b MSUClearSettings; bit.b #FLAG_NO_INTERRUPT; beq done
-
-+;  lda.b MSUPreviousTrack; beq idle
-    lda.w REG_MSU_STATUS; bit #$10; bne done
-    lda.b MSUTrackNumber; ora.b MSUCommand; bne idle
-
-    lda.b MSUPreviousTrack; sta.b MSUTrackNumber; stz.b MSUPreviousTrack
-    lda.b #$03; sta.b MSUCommand
-    stz.b MSUCurrentVolume
-    ldx.w #MSU1TrackPreload; jmp MSU1ActiveHandler.updateHandler
-
-idle:
-    ldx.w #MSU1IdleHandler; stx.w NMI_VECTOR
-done:
-    jmp MSU1ActiveHandler.done
+if {defined ENABLE_MSU_FALLBACK} {
+MSUFallbackTable:
+    //  x0  x1  x2  x3  x4  x5  x6  x7  x8  x9  xA  xB  xC  xD  xE  xF
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // 0x
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // 1x
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // 2x
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$60,$00,$00,$00  // 3x
+    db $00,$47,$47,$47,$47,$47,$47,$00,$00,$00,$00,$00,$00,$00,$00,$00  // 4x
+    db $00,$13,$14,$00,$00,$00,$55,$00,$00,$00,$00,$00,$54,$00,$00,$00  // 5x
+    db $00,$00,$60,$22,$02,$06,$0A,$2F,$00,$31,$05,$09,$06,$50,$00,$00  // 6x
+    db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // 7x
 }

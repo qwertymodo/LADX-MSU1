@@ -105,6 +105,11 @@
 // 102: Seashell Mansion
 // 103: Li'l Devil
 // 104: Song for the Sleeping Walrus
+// 105: Got Marin! (Overworld w/Marin + intro)
+// 106: Overworld (w/Marin, no intro)
+// 107: Mysterious Forest (w/Marin)
+// 108: Tal Tal Heights (w/Marin)
+// 109: Final Boss Battle
 
 architecture gb-cpu
 
@@ -120,7 +125,13 @@ include "macros.inc"
 include "constants.inc"
 
 origin 3
-//    db 1    // Set debug flag
+//    db 1    // Set debug flag 1
+
+origin 4
+//    db 1    // Set debug flag 2
+
+origin 5
+//    db 1    // Set debug flag 3
 
 origin Offset_Farcall
 Farcall:
@@ -128,10 +139,61 @@ Farcall:
 origin Offset_CheckEntityCountdownTimer
 CheckEntityCountdownTimer:
 
+origin Offset_CopyData
+CopyData:
+
 origin Offset_IncrementEntityState
 IncrementEntityState:
 
 origin 0
+base wSGBCommandBuffer
+namespace CommandBuffer {
+origin 0
+SGBCommand:
+
+origin 1
+DestinationAddress:
+
+origin 4
+TransferSize:
+
+origin 5
+IdleFlag:
+
+origin 6
+TrackNumber:
+
+origin 7
+MSUCommand:
+
+origin 8
+SetSettings:
+
+origin 9
+ClearSettings:
+
+origin 10
+TargetVolume:
+
+origin 11
+CurrentVolume:
+
+origin 12
+FadeRate:
+
+origin 13
+Settings:
+
+origin 14
+CurrentTrack:
+
+origin 15
+PreviousTrack:
+}
+
+origin 0
+base 0
+
 //-------------------------------------------------------------------
 ROMBANK($01)
 
@@ -148,6 +210,11 @@ full:
 set:
     ld      ($FFAA),a
     FARCALL($3C, PlaySong, $01)
+    ret
+}
+
+function TheEndSave {
+    call CommitSaveData
     ret
 }
 
@@ -170,6 +237,9 @@ origin Offset_Hook_SetVolume_Full
     call    SetVolume.full
     nop
 
+origin Offset_CommitSaveData
+CommitSaveData:
+
 //-------------------------------------------------------------------
 ROMBANK($02)
 origin Offset_Hook_CheckNewGameSong
@@ -184,12 +254,24 @@ function CheckShieldLevel {
 +;  ld      a,(wSwordLevel)
     ret
 }
+
 //-------------------------------------------------------------------
 ROMBANK($16)
 origin Offset_FlyingBookEntity
 if {DISABLE_COLOR_DUNGEON} == 1 {
     // Delete flying book entity from library
     db      $FF, $FF
+}
+
+//-------------------------------------------------------------------
+ROMBANK($17)
+origin Offset_Hook_TheEndSave
+    jp      CallTheEndSave
+
+origin Offset_FreeSpace_Bank17
+function CallTheEndSave {
+    FARCALL_NESTED($01, TheEndSave, $17)
+    insert "{input}", Offset_Hook_TheEndSave, $03
 }
 
 //-------------------------------------------------------------------
@@ -310,11 +392,20 @@ ROMBANK($3C)
 origin Offset_Hook_SGBTransfer
     call TransferMSU1Code
 
+origin Offset_Hook_MSUInit
+    call MSUInit
+
 origin Offset_SendUploadCommand
 SendUploadCommand:
 
+origin Offset_WaitFor60ms
+WaitFor60ms:
+
 origin Offset_WaitForBCFrames
 WaitForBCFrames:
+
+origin Offset_SendVRAMData
+SendVRAMData:
 
 origin Offset_FreeSpace_Bank3C
 define USE_EXISTING_SGB_SDK
@@ -322,7 +413,30 @@ define USE_CUSTOM_SGB_CODE
 include "sgb/sgb.asm"
 
 function TransferMSU1Code {
+// Display MSU-1 splash screen
+    ld      hl,SGB.MSU1SplashScreenPalette
+    call    SendUploadCommand
+    ld      bc,6
     call    WaitForBCFrames
+
+    FARCALL_NESTED($3E, DisplayLoadingScreen, $3C)
+    ld      bc,6
+    call    WaitForBCFrames
+    ld      hl,$6870
+    call    SendUploadCommand
+    ld      bc,6
+    call    WaitForBCFrames
+    xor     a
+    ldh     ($40),a
+    //call    WaitFor60ms
+
+// Play splash screen SFX jingle
+    ld      hl,SGB.MSU1SplashScreenSFX
+    call    SendUploadCommand
+    ld      bc,6
+    call    WaitForBCFrames
+
+// Upload MSU-1 engine payload
     ld      hl,SGB.MSU1CodePayload
 -;  call    SendUploadCommand
         ld      bc,6
@@ -330,11 +444,38 @@ function TransferMSU1Code {
         ld      a,(hl)
         and     a
         jr      nz,-
+    
+    // Clear VRAM after transfer
+    ld      hl,$8000
+    ld      bc,$2000
+-;  xor     a       // for (bc = $2000; bc > 0; bc--)
+        ld      (hl+),a // *(ptr++) = 0
+        dec     bc
+        ld      a,b
+        or      c
+        jr      nz,-
+    
+    ld      a,$81
+    ldh     ($40),a     // Enable LCDC interrupt
+    ld      bc,6
+    call    WaitForBCFrames
+    xor     a
+    ldh     ($40),a     // Disable LCDC interrupt
+    ld      bc,6
+    call    WaitForBCFrames
+
+    ret
+}
+
+function MSUInit {
+    call    SendVRAMData
+    ld      hl,SGB.MSU1InitPayload
+    call    SendUploadCommand
     ret
 }
 
 function ClearCommandBuffer {
-    ld      hl,wSGBCommandBuffer+1
+    ld      hl,CommandBuffer.DestinationAddress
     ld      a,$00
     ld      d,$0F
 -;  ld      (hl+),a
@@ -345,7 +486,7 @@ function ClearCommandBuffer {
 
 // Destination address (Bank 0) in bc
 function SetDestinationAddress {
-    ld      hl,wSGBCommandBuffer+2
+    ld      hl,CommandBuffer.DestinationAddress+1
     ld      a,b
     ld      (hl-),a
     ld      (hl),c
@@ -354,17 +495,17 @@ function SetDestinationAddress {
 
 function ChangeVolume {
     call    ClearCommandBuffer
-    ld      bc,$1800    // Destination address $001800 (MSUIdle)
+    ld      bc,{MSU1BASE}   // Destination address $001800 (MSUIdle)
     call    SetDestinationAddress
     ld      a,$06       // Transfer 6 bytes
-    ld      (wSGBCommandBuffer+4),a
+    ld      (CommandBuffer.TransferSize),a
     ld      hl,$FFAA
     ld      a,(hl)
     sla     a
     or      (hl)
     jr      z,+
         or      $0F
-+;  ld      (wSGBCommandBuffer+10),a
++;  ld      (CommandBuffer.TargetVolume),a
     ld      hl,wSGBCommandBuffer
     call    SendUploadCommand
     ld      bc,6
@@ -373,12 +514,12 @@ function ChangeVolume {
 
 function StopPlayback {
     call    ClearCommandBuffer
-    ld      bc,$1800    // Destination address $001800 (MSUIdle)
+    ld      bc,{MSU1BASE}   // Destination address $001800 (MSUIdle)
     call    SetDestinationAddress
     ld      a,$03       // Transfer 3 bytes
-    ld      (wSGBCommandBuffer+4),a
+    ld      (CommandBuffer.TransferSize),a
     ld      a,$80       // Stop playback command
-    ld      (wSGBCommandBuffer+7),a
+    ld      (CommandBuffer.MSUCommand),a
     ld      hl,wSGBCommandBuffer
     call    SendUploadCommand
     ld      bc,6
@@ -387,10 +528,10 @@ function StopPlayback {
 
 function FadeOut {
     call    ClearCommandBuffer
-    ld      bc,$1800    // Destination address $001800 (MSUIdle)
+    ld      bc,{MSU1BASE}   // Destination address $001800 (MSUIdle)
     call    SetDestinationAddress
     ld      a,$06       // Transfer 6 bytes
-    ld      (wSGBCommandBuffer+4),a
+    ld      (CommandBuffer.TransferSize),a
     ld      hl,wSGBCommandBuffer
     call    SendUploadCommand
     ld      bc,6
@@ -398,26 +539,37 @@ function FadeOut {
 }
 
 function LoadTrack {
-    ld      bc,$1800    // Destination address $001800 (MSUIdle)
+    ld      bc,{MSU1BASE}   // Destination address $001800 (MSUIdle)
     call    SetDestinationAddress
     ld      a,$06       // Transfer 6 bytes
-    ld      (wSGBCommandBuffer+4),a
+    ld      (CommandBuffer.TransferSize),a
     ld      a,(wActiveMusicTrack)  // Track number
-    ld      (wSGBCommandBuffer+6),a
+    ld      (CommandBuffer.TrackNumber),a
     ld      c,a
     cp      $1A         // Track $1A: The Storm/Opening
     jr      nz,+        // Fully reset initial state
         ld      a,$0B   // Transfer 11 bytes
-        ld      (wSGBCommandBuffer+4),a
+        ld      (CommandBuffer.TransferSize),a
         ld      a,$10   // Fade rate
-        ld      (wSGBCommandBuffer+12),a
+        ld      (CommandBuffer.FadeRate),a
         ld      a,$04   // FLAG_AUTO_RESUME
-        ld      (wSGBCommandBuffer+13),a
+        ld      (CommandBuffer.Settings),a
+        jp      ++
++;  cp      $22         // Track $22: The Wise Owl
+    jr      nz,+        // Prior to the egg, don't set resume flag
+        ldh     a,(hMapId)
+        cp      $00
+        jr      nz,+
+        ldh     a,(hRoomId)
+        cp      $16     // Below Wind Fish's Egg
+        jr      nz,+
+        ld      a,$03
+        jp      ++
 +;  ld      b,$00
     ld      hl,tracklist
     add     hl,bc
     ld      a,(hl)      // Track play command
-    ld      (wSGBCommandBuffer+7),a
++;  ld      (CommandBuffer.MSUCommand),a
     ld      a,$FF
 //    ld      hl,$FFAA
 //    ld      a,(hl)
@@ -425,23 +577,23 @@ function LoadTrack {
 //    or      (hl)
 //    jr      z,+
 //        or      $0F
-+;  ld      (wSGBCommandBuffer+10),a
++;  ld      (CommandBuffer.TargetVolume),a
     ret
 }
 
 // Flags to set are in the A register
 function SetFlags {
-    ld      hl,(wSGBCommandBuffer+8)
+    ld      hl,(CommandBuffer.SetSettings)
     or      (hl)
-    ld      (wSGBCommandBuffer+8),a
+    ld      (CommandBuffer.SetSettings),a
     ret
 }
 
 // Flags to clear are in the A register
 function ClearFlags {
-    ld      hl,(wSGBCommandBuffer+9)
+    ld      hl,(CommandBuffer.ClearSettings)
     or      (hl)
-    ld      (wSGBCommandBuffer+9),a
+    ld      (CommandBuffer.ClearSettings),a
     ret
 }
 
@@ -470,11 +622,35 @@ function PlaySong {
         jp      done
 
 +;  call    ClearCommandBuffer
-    ld      a,(wActiveMusicTrack)
 
 //=====================================
 // Alternate/expanded tracks
 //=====================================
+    ld      a,(wIsMarinFollowingLink)
+    cp      $01
+    ld      a,(wActiveMusicTrack)
+    jr      nz,noMarin
+    cp      $05         // Track $05: Overworld
+    jr      nz,++
+        ldh     a,(hRoomId)
+        cp      $FD     // Walrus Beach
+        jr      nz,+
+            jp      flags
+    +;  ld      a,$6A   // Extended Track - Overworld w/Marin (no intro)
+        jp      setAlt
++;  cp      $06         // Track $06: Tal Tal Heights
+    jr      nz,+
+        ld      a,$6C   // Extended Track - Tal Tal Heights w/Marin
+        jp      setAlt
++;  cp      $09         // Track $09: Mysterious Forest
+    jr      nz,+
+        ld      a,$6B   // Extended Track - Mysterious Forest w/Marin
+        jp      setAlt
++;  cp      $31         // Track $31: Let the Journey Begin!
+    jr      nz,+
+        ld      a,$69   // Extended Track - Overworld w/Marin (with intro)
+        jp      setAlt
+noMarin:
 +;  cp      $02         // Track $02: Trendy Game/Fishing Pond
     jr      nz,+
         ldh     a,(hMapId)
@@ -511,6 +687,15 @@ function PlaySong {
         cp      $06     // Outside Wind Fish's Egg
         jr      nz,flags
         ld      a,$63   // Alternate track $63: The Wise Owl - Final Message
+        jp      setAlt
++;  cp      $50         // Track $50: Miniboss Battle
+    jr      nz,+
+        ldh     a,(hMapId)
+        cp      $08
+        jr      nz,flags
+        ldh     a,(hRoomId)
+        cp      $74     // Wind Fish final battle room
+        ld      a,$6D
 //        jp      setAlt
 
 +;
@@ -621,6 +806,8 @@ flags:
     jr      z,+
     cp      $55         // Track $55: Rooster Resurrection
     jr      z,+
+    cp      $56         // Track $56: Seashell Mansion - Get Sword
+    jr      z,+
     cp      $5F         // Track $5F: Final Boss Defeated
     jr      nz,++
         // Clear auto-resume flag
@@ -630,7 +817,8 @@ flags:
 //=====================================
 // Send the track load command
 //=====================================
-+;  call    LoadTrack
++;  FARCALL_NESTED($1B, Offset_SFXCancel_Bank1B, $3C)
+    call    LoadTrack
     ld      hl,wSGBCommandBuffer
     call    SendUploadCommand
     ld      bc,6
@@ -651,6 +839,19 @@ done:
     pop     bc
     pop     af
     ret
+}
+
+function PlayJingle {
+    // $D360-$D361
+    //  $01: Chest open - 21_ItemGetFanfare.ry.48.dspadpcm
+    //  $02: Puzzle solved - 17_NazoTokiSeikaiOn.ry.48.dspadpcm
+    //  ??: Golden leaf get - KonohaGetFanfare.ry.48.dspadpcm
+    // $D370-$D371
+    //  $01: Secret seashell get - KaigaraGetFanfare.ry.48.dspadpcm
+    //  $09: Ocarina BotWF jingle
+    //  $0A: Ocarina frog jingle
+    //  $0B: Ocarina fish jingle
+    //  $1B: Key detected in room jingle
 }
 
 DebugSaveData:
@@ -696,7 +897,11 @@ done:
     ret
 }
 
-if REGION == ROM_REGION_US {
+if REGION == ROM_REGION_JP {
+    // $39,$29,$39,$00,$00: $60
+    // $14,$10,$09,$09,$00: $3C
+    // $1F,$28,$2E,$00,$00: $62
+} else if REGION == ROM_REGION_US {
 function CheckFilenames {
     ld      a,(wSaveSlot)
     ld      e,a
@@ -767,6 +972,11 @@ load:
 done:
     ret
 }
+}   else if REGION == ROM_REGION_FR {
+    // LOLO: $60
+} else if REGION == ROM_REGION_DE {
+    // MOYSE: $3C
+    // ZELDA: $60
 }
 
 origin Offset_MSU1TrackCommandTable
@@ -777,8 +987,8 @@ tracklist:
     db $01,$03,$07,$03,$03,$01,$03,$03,$01,$01,$01,$01,$01,$01,$01,$03  // 2x
     db $05,$03,$03,$03,$05,$05,$05,$03,$05,$03,$03,$00,$03,$01,$03,$01  // 3x
     db $03,$01,$01,$01,$01,$01,$01,$01,$03,$03,$01,$03,$05,$01,$03,$00  // 4x
-    db $03,$03,$03,$03,$03,$04,$05,$03,$03,$03,$03,$03,$00,$03,$03,$03  // 5x
-    db $03,$03,$03,$03,$03,$03,$03,$07,$05,$00,$00,$00,$00,$00,$00,$00  // 6x
+    db $03,$03,$03,$03,$03,$07,$07,$03,$03,$03,$03,$03,$03,$03,$03,$03  // 5x
+    db $03,$03,$03,$03,$03,$03,$03,$07,$01,$03,$03,$03,$03,$03,$00,$00  // 6x
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // 7x
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // 8x
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // 9x
@@ -788,3 +998,32 @@ tracklist:
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // Dx
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // Ex
     db $00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00,$00  // Fx
+
+//-------------------------------------------------------------------
+// MSU-1 splash screen bank
+//=====================================
+ROMBANK($3E)
+
+//print "Tiles: ", pc(), "\n"
+include "sgb/sgb_code_loading_screen.asm"
+
+DisplayLoadingScreen:
+    ld      a,$E4
+    ldh     ($47),a
+    
+    ld      hl,LoadingScreenTiles
+    ld      bc,LoadingScreenTiles_end-LoadingScreenTiles
+    ld      de,$8000
+
+    call    CopyData
+    
+    ld      hl,LoadingScreenTilemap
+    ld      bc,LoadingScreenTilemap_end-LoadingScreenTilemap
+    ld      de,$9800
+
+    call    CopyData
+
+    ld      a,$91
+    ldh     ($40),a     // Enable LCDC interrupt
+
+    ret
