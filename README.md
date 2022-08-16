@@ -2,6 +2,10 @@
 
 This ROM hack adds MSU-1 audio support to Link's Awakening DX.  MSU-1 support for Game Boy games requires the use of the Super Game Boy, so a fully compatible Super Game Boy emulator or flash cart must be used.
 
+## Patching The Game
+
+This patch is meant to be applied to the .gbc ROM file for Link's Awakening DX.  Patch files are provided for all known official revisions of the game.  Use Floating IPS (FlIPS) or beat to apply the appropriate .bps patch to the corresponding version of the game.  BPS patch files include checksums to ensure that the patch is applied to the correct base ROM.  Note that sometimes revisions of this game are labeled as "Rev A" or "Rev B".  In this case, "A" is version 1.1, and "B" is version 1.2.  Files with no revision listed are 1.0.
+
 ## Running The Game
 
 ### PC Emulators

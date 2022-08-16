@@ -15,7 +15,6 @@ SRCFILES:=	ladx-msu1.asm				\
 			sgb/patches.asm				\
 			sgb/sgb_user_palette.asm	\
 			sgb/sgb_user_commands.asm	\
-			sgb/sgb_user_frame.asm		\
 			sgb/sgb_code_loading_screen.asm
 
 BINFILES:=		sgb/loadingtiles.bin	\
@@ -30,10 +29,12 @@ REVISIONS:= j10 j11 j12 u10 u11 u12 f10 f11 g10 g11
 all: ${REVISIONS}
 
 dist: ${REVISIONS}
-	tar -zcvf "${INPUT}-msu1_$$(date '+%Y%m%d').tar.gz" ${INPUT}_*-msu1.bps
+#	@tar -zcvf "${INPUT}-msu1_$$(date '+%Y%m%d').tar.gz" ${INPUT}_*-msu1.bps CHANGELOG.txt
+	@zip "${INPUT}-msu1_$$(date '+%Y%m%d').zip" ${INPUT}_*-msu1.bps CHANGELOG.txt
 
 dist-src: ${SRCFILES} ${BINFILES} ${SCRIPTS}
-	tar -zcvf "${INPUT}-msu1_$$(date '+%Y%m%d')-src.tar.gz" Makefile $^
+#	@tar -zcvf "${INPUT}-msu1_$$(date '+%Y%m%d')-src.tar.gz" Makefile $^
+	@zip "${INPUT}-msu1_$$(date '+%Y%m%d')-src.zip" Makefile $^
 
 j10:
 	make -B patch REV=JP_1_0 INPUT=ladx_j1.0

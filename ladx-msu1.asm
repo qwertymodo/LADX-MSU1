@@ -413,6 +413,8 @@ define USE_CUSTOM_SGB_CODE
 include "sgb/sgb.asm"
 
 function TransferMSU1Code {
+    insert "{input}", Offset_Hook_SGBTransfer, $03
+
 // Display MSU-1 splash screen
     ld      hl,SGB.MSU1SplashScreenPalette
     call    SendUploadCommand
